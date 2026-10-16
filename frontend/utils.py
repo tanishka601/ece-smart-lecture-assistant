@@ -1,3 +1,5 @@
+
+import os
 import requests
 import streamlit as st
 
@@ -5,7 +7,10 @@ import streamlit as st
 # Backend Configuration
 # ----------------------------------
 
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL = os.getenv(
+    "BACKEND_URL",
+    "http://127.0.0.1:8000"
+).rstrip("/")
 
 
 # ----------------------------------
@@ -13,20 +18,17 @@ BACKEND_URL = "http://127.0.0.1:8000"
 # ----------------------------------
 
 def upload_audio(uploaded_file):
-    """
-    Upload the selected lecture audio file to the backend.
-    """
+    """Upload lecture audio to the backend."""
 
     files = {
         "file": (
             uploaded_file.name,
             uploaded_file.getvalue(),
-            uploaded_file.type
+            uploaded_file.type or "application/octet-stream"
         )
     }
 
     try:
-
         response = requests.post(
             f"{BACKEND_URL}/upload",
             files=files,
@@ -36,22 +38,22 @@ def upload_audio(uploaded_file):
         if response.status_code == 200:
             return response.json()
 
-        st.error(response.text)
+        st.error(f"Upload failed: {response.text}")
         return None
 
     except requests.exceptions.ConnectionError:
-
         st.error(
-            "❌ Cannot connect to the backend.\n\n"
-            "Make sure FastAPI is running on http://127.0.0.1:8000"
+            "Cannot connect to the backend. "
+            "Check that the backend is running and BACKEND_URL is correct."
         )
+        return None
 
+    except requests.exceptions.Timeout:
+        st.error("The upload timed out. Please try again.")
         return None
 
     except Exception as e:
-
         st.error(f"Error: {e}")
-
         return None
 
 
@@ -60,44 +62,31 @@ def upload_audio(uploaded_file):
 # ----------------------------------
 
 def ask_ai(question):
-    """
-    Send a question to the AI chat endpoint.
-    """
+    """Send a question to the AI chat endpoint."""
 
     try:
-
         response = requests.post(
-
             f"{BACKEND_URL}/chat",
-
-            json={
-                "question": question
-            },
-
+            json={"question": question},
             timeout=300
-
         )
 
         if response.status_code == 200:
-
             return response.json()["answer"]
 
-        st.error(response.text)
-
+        st.error(f"Chat failed: {response.text}")
         return None
 
     except requests.exceptions.ConnectionError:
+        st.error("Cannot connect to the backend.")
+        return None
 
-        st.error(
-            "❌ Cannot connect to backend."
-        )
-
+    except requests.exceptions.Timeout:
+        st.error("The request timed out. Please try again.")
         return None
 
     except Exception as e:
-
         st.error(f"Error: {e}")
-
         return None
 
 
