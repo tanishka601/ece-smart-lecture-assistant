@@ -1,106 +1,56 @@
 
 import os
-import requests
-import streamlit as st
-
-# ----------------------------------
-# Backend Configuration
-# ----------------------------------
-
-BACKEND_URL = os.getenv(
-    "BACKEND_URL",
-    "http://127.0.0.1:8000"
-).rstrip("/")
+import uuid
+from pathlib import Path
 
 
-# ----------------------------------
-# Upload Lecture Audio
-# ----------------------------------
+# Project root: the directory containing backend/ and frontend/
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-def upload_audio(uploaded_file):
-    """Upload lecture audio to the backend."""
+# Use the configured upload directory if available; otherwise use uploads/
+try:
+    from backend.config import UPLOAD_DIR as CONFIG_UPLOAD_DIR
+    UPLOAD_DIR = Path(CONFIG_UPLOAD_DIR)
+    if not UPLOAD_DIR.is_absolute():
+        UPLOAD_DIR = PROJECT_ROOT / UPLOAD_DIR
+except (ImportError, AttributeError, TypeError):
+    UPLOAD_DIR = PROJECT_ROOT / "uploads"
 
-    files = {
-        "file": (
-            uploaded_file.name,
-            uploaded_file.getvalue(),
-            uploaded_file.type or "application/octet-stream"
-        )
-    }
-
-    try:
-        response = requests.post(
-            f"{BACKEND_URL}/upload",
-            files=files,
-            timeout=300
-        )
-
-        if response.status_code == 200:
-            return response.json()
-
-        st.error(f"Upload failed: {response.text}")
-        return None
-
-    except requests.exceptions.ConnectionError:
-        st.error(
-            "Cannot connect to the backend. "
-            "Check that the backend is running and BACKEND_URL is correct."
-        )
-        return None
-
-    except requests.exceptions.Timeout:
-        st.error("The upload timed out. Please try again.")
-        return None
-
-    except Exception as e:
-        st.error(f"Error: {e}")
-        return None
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ----------------------------------
-# Chat with AI
-# ----------------------------------
+def save_uploaded_file(uploaded_file):
+    """
+    Save a FastAPI UploadFile to the uploads directory.
+    Returns the saved file's path as a string.
+    """
 
-def ask_ai(question):
-    """Send a question to the AI chat endpoint."""
+    original_name = getattr(uploaded_file, "filename", None) or "lecture_audio"
+    safe_name = os.path.basename(original_name)
+    extension = Path(safe_name).suffix
+
+    # Avoid collisions when different users upload files with the same name.
+    unique_name = f"{uuid.uuid4().hex}{extension}"
+    file_path = UPLOAD_DIR / unique_name
 
     try:
-        response = requests.post(
-            f"{BACKEND_URL}/chat",
-            json={"question": question},
-            timeout=300
-        )
+        # FastAPI UploadFile exposes a file-like object.
+        file_object = getattr(uploaded_file, "file", uploaded_file)
 
-        if response.status_code == 200:
-            return response.json()["answer"]
+        # Handle both file objects and byte content.
+        if isinstance(file_object, bytes):
+            file_bytes = file_object
+        else:
+            file_object.seek(0)
+            file_bytes = file_object.read()
 
-        st.error(f"Chat failed: {response.text}")
-        return None
+        with file_path.open("wb") as output:
+            output.write(file_bytes)
 
-    except requests.exceptions.ConnectionError:
-        st.error("Cannot connect to the backend.")
-        return None
+        return str(file_path)
 
-    except requests.exceptions.Timeout:
-        st.error("The request timed out. Please try again.")
-        return None
-
-    except Exception as e:
-        st.error(f"Error: {e}")
-        return None
-
-
-# ----------------------------------
-# Initialize Session State
-# ----------------------------------
-
-def initialize_session():
-
-    if "uploaded" not in st.session_state:
-        st.session_state.uploaded = False
-
-    if "data" not in st.session_state:
-        st.session_state.data = None
-
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+    except Exception:
+        # Remove an incomplete file if saving fails.
+        if file_path.exists():
+            file_path.unlink()
+        raise
