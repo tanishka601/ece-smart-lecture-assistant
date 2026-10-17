@@ -87,8 +87,7 @@ def show_chat(chat_history):
 
             response = requests.post(
 
-                "http://127.0.0.1:8000/chat",
-
+                https://ece-smart-lecture-backend.onrender.com/chat
                 json={
                     "question": question
                 }

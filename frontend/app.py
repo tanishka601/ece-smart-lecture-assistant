@@ -75,7 +75,11 @@ if uploaded_file:
         }
 
         progress.progress(20)
-        response = requests.post("http://127.0.0.1:8000/upload", files=files)
+        response = requests.post(
+         "https://ece-smart-lecture-backend.onrender.com/upload",
+         files=files,
+         timeout=300
+        )
         progress.progress(100)
 
         if response.status_code == 200:
